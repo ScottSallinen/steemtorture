@@ -27,7 +27,7 @@ type Call struct {
 
 
 // Call get block on the upstream.
-func get_block(client *http.Client, url string, httpmethod string, i int, verbose bool) int {
+func get_block(client *http.Client, url string, httpmethod string, i int, verbose bool, prerr bool) int {
   mark := time.Now()
 
   // Build request.
@@ -38,23 +38,31 @@ func get_block(client *http.Client, url string, httpmethod string, i int, verbos
   req, err := http.NewRequest(httpmethod, url, bytes.NewBuffer(requestJson))
   resp, err := client.Do(req)
   if err != nil {
-    if verbose {  log.Println(err)  }
+    if prerr {  log.Println(err)  }
+    return 0
+  }
+  if resp.StatusCode != http.StatusOK {
+    defer resp.Body.Close()
+    if prerr {  log.Println(resp.Status)  }
+    bodyBytes, _ := ioutil.ReadAll(resp.Body)
+    if prerr {  log.Println(string(bodyBytes))  }
     return 0
   }
 
   // Decode response as a json.
   var iface interface{}
   rdecoder := json.NewDecoder(resp.Body)
+  defer resp.Body.Close()
   err = rdecoder.Decode(&iface)
   if err != nil {
-    if verbose {  log.Println(err)  }
+    if prerr {  log.Println(err)  }
     return 0
   }
   resultJson := iface.(map[string]interface{})
 
   // Check for upstream json error.
   if _, found := resultJson["error"]; found {
-    log.Println(resultJson)
+    if prerr {  log.Println(resultJson)  }
     return 0
   }
 
@@ -67,7 +75,7 @@ func get_block(client *http.Client, url string, httpmethod string, i int, verbos
 
 
 // Writes to a websocket a request.
-func ws_write(wsc *websocket.Conn, i int, verbose bool) {
+func ws_write(wsc *websocket.Conn, i int, prerr bool) {
   // Build request.
   params := []interface{}{"condenser_api", "get_block", []interface{}{strconv.Itoa(i)}}
   requestJson, _ := json.Marshal(&Call{ Jsonrpc:"2.0", Id : strconv.Itoa(i), Method: "call", Params: params})
@@ -75,13 +83,13 @@ func ws_write(wsc *websocket.Conn, i int, verbose bool) {
   // Push request to websocket.
   err := wsc.WriteMessage(websocket.TextMessage, requestJson)
   if err != nil {
-    if verbose {  log.Println(err)  }
+    if prerr {  log.Println(err)  }
   }
 }
 
 
 // Reads from a websocket *i* requests.
-func ws_reader(wsc *websocket.Conn, i int, verbose bool, wg *sync.WaitGroup, succ_ch *chan int) {
+func ws_reader(wsc *websocket.Conn, i int, wg *sync.WaitGroup, succ_ch *chan int, verbose bool, prerr bool) {
   mark := time.Now()
   succ := 0
   // Try to collect i responses.
@@ -90,23 +98,23 @@ func ws_reader(wsc *websocket.Conn, i int, verbose bool, wg *sync.WaitGroup, suc
     // Read message, decode to json.
     _, message, err := wsc.ReadMessage()
     if err != nil {
-      if verbose {  log.Println(err)  }
+      if prerr {  log.Println(err)  }
       continue
     }
     err = json.Unmarshal(message, &iface)
     if err != nil {
-      if verbose {  log.Println(err)  }
+      if prerr {  log.Println(err)  }
       continue
     }
     if iface == nil {
-      if verbose {  log.Println(err)  }
+      if prerr {  log.Println(err)  }
       continue
     }
     resultJson := iface.(map[string]interface{})
 
     // Check for upstream json error.
     if _, found := resultJson["error"]; found {
-      log.Println(resultJson)
+      if prerr {  log.Println(resultJson)  }
       continue
     }
 
@@ -126,6 +134,7 @@ func main() {
   wgsize  :=    flag.Int("c", 64,                      "concurrency")
   method  := flag.String("m", "POST",                  "http method")
   verbose :=   flag.Bool("v", false,                   "verbose blocks")
+  prerr   :=   flag.Bool("e", false,                   "print block errors")
   flag.Parse()
 
   var client   *http.Client
@@ -173,10 +182,10 @@ func main() {
         // Launch ws reader thread (with waitgroup to know when done).
         var wscwg sync.WaitGroup
         wscwg.Add(1)
-        go ws_reader(wsc, test_loop, *verbose, &wscwg, &succ_ch)
+        go ws_reader(wsc, test_loop, &wscwg, &succ_ch, *verbose, *prerr)
         // Split blocks by thread id and job index.
         for j := 0; j < test_loop; j++ {
-          ws_write(wsc, 10000000 + i*test_loop + j, *verbose)
+          ws_write(wsc, 20000000 + i*test_loop + j, *prerr)
         }
         // Wait for reader thread to complete, then close websocket.
         wscwg.Wait()
@@ -187,7 +196,7 @@ func main() {
         succ := 0
         // Split blocks by thread id and job index.
         for j := 0; j < test_loop; j++ {
-          succ += get_block(client, httpurl, *method, 10000000 + i*test_loop + j, *verbose)
+          succ += get_block(client, httpurl, *method, 20000000 + i*test_loop + j, *verbose, *prerr)
         }
         succ_ch <- succ
         log.Printf("%d / %d", succ, test_loop)
