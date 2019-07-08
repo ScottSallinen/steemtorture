@@ -185,7 +185,7 @@ func main() {
         go ws_reader(wsc, test_loop, &wscwg, &succ_ch, *verbose, *prerr)
         // Split blocks by thread id and job index.
         for j := 0; j < test_loop; j++ {
-          ws_write(wsc, 20000000 + i*test_loop + j, *prerr)
+          ws_write(wsc, 20000000 + (i*test_loop + j)*100, *prerr)
         }
         // Wait for reader thread to complete, then close websocket.
         wscwg.Wait()
@@ -196,7 +196,7 @@ func main() {
         succ := 0
         // Split blocks by thread id and job index.
         for j := 0; j < test_loop; j++ {
-          succ += get_block(client, httpurl, *method, 20000000 + i*test_loop + j, *verbose, *prerr)
+          succ += get_block(client, httpurl, *method, 20000000 + (i*test_loop + j)*100, *verbose, *prerr)
         }
         succ_ch <- succ
         log.Printf("%d / %d", succ, test_loop)
