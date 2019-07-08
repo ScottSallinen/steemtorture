@@ -32,7 +32,7 @@ func get_block(client *http.Client, url string, httpmethod string, i int, verbos
 
   // Build request.
   params := []interface{}{"condenser_api", "get_block", []interface{}{strconv.Itoa(i)}}
-  requestJson, err := json.Marshal(&Call{ Jsonrpc:"2.0", Id : strconv.Itoa(i), Method: "call", Params: params})
+  requestJson, err := json.Marshal(&Call{ Jsonrpc:"2.0", Id : "0", Method: "call", Params: params})
 
   // Submit request.
   req, err := http.NewRequest(httpmethod, url, bytes.NewBuffer(requestJson))
